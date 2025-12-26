@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smartphone Radiation Detector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; }
+        .hidden { display: none !important; }
+        
+        /* Firefox compatibility fixes */
+        input[type="range"] {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #475569;
+            border-radius: 5px;
+            outline: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #a855f7;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #a855f7;
+            cursor: pointer;
+            border-radius: 50%;
+            border: none;
+        }
+        
+        select, input[type="file"], input[type="number"] {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
+        
+        /* Ensure flex works in Firefox */
+        .flex { display: -webkit-box; display: -ms-flexbox; display: flex; }
+        .grid { display: -ms-grid; display: grid; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white min-h-screen">
+    <div class="max-w-6xl mx-auto p-4">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold mb-2">⚡ Smartphone Radiation Detector</h1>
+            <p class="text-gray-300">Camera-based ionizing radiation detection and analysis</p>
+        </header>
+
+        <div id="nav" class="flex gap-2 mb-6 flex-wrap justify-center">
+            <button data-mode="home" class="mode-btn px-4 py-2 rounded bg-purple-600">Home</button>
+            <button data-mode="realtime" class="mode-btn px-4 py-2 rounded bg-slate-700">📷 Real-time</button>
+            <button data-mode="static" class="mode-btn px-4 py-2 rounded bg-slate-700">📁 Static Images</button>
+            <button data-mode="calibrate" class="mode-btn px-4 py-2 rounded bg-slate-700">⚙️ Calibrate</button>
+            <button data-mode="info" class="mode-btn px-4 py-2 rounded bg-slate-700">ℹ️ Info</button>
+        </div>
+
+        <!-- Progress Bar (inline, always visible when processing) -->
+        <div id="progress-section" class="hidden mb-6 bg-slate-800 rounded-lg p-4">
+            <div class="flex justify-between mb-2">
+                <span class="font-bold" id="progress-text">Processing...</span>
+                <span class="font-bold text-purple-400" id="progress-percent">0%</span>
+            </div>
+            <div class="w-full bg-slate-700 rounded-full h-4 overflow-hidden">
+                <div id="progress-bar" class="bg-gradient-to-r from-purple-500 to-pink-500 h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div id="home-mode" class="mode-content bg-slate-800 rounded-lg p-6">
+            <h2 class="text-2xl font-bold mb-4">Welcome!</h2>
+            <p class="mb-4">This application uses your smartphone camera to detect ionizing radiation. Cover your camera with black tape or cloth to block ambient light.</p>
+            
+            <div class="bg-slate-700 p-4 rounded mb-4">
+                <h3 class="font-bold mb-2">Quick Start Guide:</h3>
+                <ol class="list-decimal list-inside space-y-2">
+                    <li>Cover your camera lens completely with opaque black tape or multiple layers of cloth</li>
+                    <li><strong>Real-time Mode:</strong> Start camera → Capture background (20 frames) → Adjust threshold (40-70) → Set exposure time (1-30s for sensitivity) → Start detection</li>
+                    <li><strong>Static Images Mode:</strong> Upload background image → Upload detection image → Adjust threshold → Results update automatically</li>
+                    <li>Adjust background subtraction method: Pixel-by-pixel (best quality), Mean (fastest), or Hybrid (recommended)</li>
+                    <li>Optional: Calibrate with known source (activity, distance, exposure time) for dose rate measurements</li>
+                    <li>Net Events = corrected count after background subtraction</li>
+                </ol>
+            </div>
+
+            <div id="calibration-status" class="hidden bg-green-900/30 border border-green-500 p-4 rounded">
+                <p class="font-bold">✓ Calibrated</p>
+                <p class="text-sm" id="calib-factor"></p>
+            </div>
+        </div>
+
+        <div id="realtime-mode" class="mode-content hidden bg-slate-800 rounded-lg p-6">
+            <h2 class="text-2xl font-bold mb-4">Real-time Detection</h2>
+            
+            <div class="bg-blue-900/30 border border-blue-500 p-3 rounded mb-4 text-sm">
+                <p class="font-bold mb-1">📱 Mobile Camera Access Issues?</p>
+                <ul class="list-disc list-inside space-y-1 ml-2">
+                    <li><strong>Must use HTTPS:</strong> Open file from GitHub Pages or web server, not as local file</li>
+                    <li><strong>File opened directly?</strong> Won't work on mobile. Upload to GitHub Pages or use web hosting</li>
+                    <li><strong>Grant permissions:</strong> Tap "Allow" when browser asks for camera access</li>
+                    <li><strong>iPhone:</strong> Settings → Safari/Chrome → Camera → Ask or Allow</li>
+                    <li><strong>Android:</strong> Settings → Apps → Browser → Permissions → Camera → Allow</li>
+                    <li><strong>Alternative:</strong> Use Static Images mode - works on all devices without camera permission</li>
+                </ul>
+                <button id="test-camera-btn" class="mt-2 bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded text-xs">
+                    Test Camera Access
+                </button>
+            </div>
+            
+            <div class="flex gap-2 mb-4 flex-wrap">
+                <button id="start-camera-btn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">Start Camera</button>
+                <button id="stop-camera-btn" class="hidden bg-red-600 hover:bg-red-700 px-4 py-2 rounded">Stop Camera</button>
+                <button id="capture-bg-btn" class="hidden bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Capture Background</button>
+                <button id="start-detect-btn" class="hidden bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded">Start Detection</button>
+                <button id="stop-detect-btn" class="hidden bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded">Stop Detection</button>
+            </div>
+
+            <div class="mb-4">
+                <label class="block mb-2">Detection Threshold: <span id="threshold-rt-val">50</span></label>
+                <input type="range" id="threshold-rt" min="10" max="150" value="50" class="w-full">
+            </div>
+
+            <div class="mb-4">
+                <label class="block mb-2">Background Frames to Average: <span id="bg-frames-val">20</span></label>
+                <input type="range" id="bg-frames" min="5" max="50" value="20" step="5" class="w-full">
+                <p class="text-sm text-gray-400 mt-1">More frames = better noise reduction, but takes longer</p>
+            </div>
+
+            <div class="mb-4">
+                <label class="block mb-2">Detection Exposure Time: <span id="detect-exposure-val">1</span> second(s)</label>
+                <input type="range" id="detect-exposure" min="1" max="30" value="1" class="w-full">
+                <p class="text-sm text-gray-400 mt-1">Longer exposure = higher sensitivity for low radiation. Updates every N seconds.</p>
+            </div>
+
+            <div class="mb-4">
+                <label class="block mb-2">Background Subtraction Method:</label>
+                <select id="bg-method-rt" class="w-full p-2 bg-slate-700 rounded text-white">
+                    <option value="pixelwise">Pixel-by-Pixel (Most Accurate)</option>
+                    <option value="mean">Mean Subtraction (Faster)</option>
+                    <option value="hybrid">Hybrid (Mean + Baseline Correction)</option>
+                </select>
+                <p class="text-sm text-gray-400 mt-1">Method affects noise rejection. Change updates instantly.</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <p class="text-sm text-gray-400">Camera Feed</p>
+                    <video id="video" autoplay playsinline class="w-full bg-black rounded"></video>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Detection (Stars)</p>
+                    <canvas id="rt-canvas" class="w-full bg-black rounded"></canvas>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div class="bg-slate-700 p-3 rounded">
+                    <p class="text-sm text-gray-400">Events</p>
+                    <p class="text-2xl font-bold" id="rt-counts">0</p>
+                </div>
+                <div class="bg-slate-700 p-3 rounded">
+                    <p class="text-sm text-gray-400">Background</p>
+                    <p class="text-xl font-bold" id="rt-bg-counts">0</p>
+                </div>
+                <div class="bg-slate-700 p-3 rounded">
+                    <p class="text-sm text-gray-400">Net (corrected)</p>
+                    <p class="text-2xl font-bold text-green-400" id="rt-net-counts">0</p>
+                </div>
+                <div id="rt-dose-display" class="hidden bg-purple-700 p-3 rounded md:col-span-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-400">Dose Rate</p>
+                            <p class="text-2xl font-bold" id="rt-dose">0</p>
+                        </div>
+                        <select id="unit-selector-rt" class="bg-slate-800 text-white p-2 rounded">
+                            <option value="uSv/hr">µSv/hr</option>
+                            <option value="mSv/hr">mSv/hr</option>
+                            <option value="Sv/hr">Sv/hr</option>
+                            <option value="mR/hr">mR/hr</option>
+                            <option value="R/hr">R/hr</option>
+                            <option value="uGy/hr">µGy/hr</option>
+                            <option value="mGy/hr">mGy/hr</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="static-mode" class="mode-content hidden bg-slate-800 rounded-lg p-6">
+            <h2 class="text-2xl font-bold mb-4">Static Image Analysis</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block mb-2 font-bold">1. Upload Background Image</label>
+                    <input type="file" accept="image/*" id="bg-upload" class="w-full p-2 bg-slate-700 rounded">
+                </div>
+
+                <div>
+                    <label class="block mb-2 font-bold">2. Upload Detection Image</label>
+                    <input type="file" accept="image/*" id="detect-upload" class="w-full p-2 bg-slate-700 rounded">
+                </div>
+
+                <div>
+                    <label class="block mb-2">Detection Threshold: <span id="threshold-val">50</span></label>
+                    <input type="range" id="threshold" min="10" max="150" value="50" class="w-full">
+                    <p class="text-sm text-gray-400 mt-1">Adjust threshold and processing will update automatically</p>
+                </div>
+
+                <div>
+                    <label class="block mb-2">Background Subtraction Method:</label>
+                    <select id="bg-method-static" class="w-full p-2 bg-slate-700 rounded text-white">
+                        <option value="pixelwise">Pixel-by-Pixel (Most Accurate)</option>
+                        <option value="mean">Mean Subtraction (Faster)</option>
+                        <option value="hybrid">Hybrid (Mean + Baseline Correction)</option>
+                    </select>
+                    <p class="text-sm text-gray-400 mt-1">Pixel-by-pixel removes spatial noise patterns. Mean is faster for uniform backgrounds.</p>
+                </div>
+
+                <div class="bg-slate-700 p-4 rounded">
+                    <p class="font-bold mb-2">Results:</p>
+                    <p>Events Detected: <span class="text-2xl font-bold text-yellow-400" id="static-counts">0</span></p>
+                    <p>Background Events: <span class="text-lg font-bold text-gray-400" id="static-bg-counts">0</span></p>
+                    <p>Net Events (corrected): <span class="text-2xl font-bold text-green-400" id="static-net-counts">0</span></p>
+                    <div id="static-dose" class="hidden mt-3 pt-3 border-t border-slate-600">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-400">Dose Rate:</p>
+                                <p class="text-2xl font-bold text-purple-400" id="static-dose-val">0</p>
+                            </div>
+                            <select id="unit-selector-static" class="bg-slate-800 text-white p-2 rounded">
+                                <option value="uSv/hr">µSv/hr</option>
+                                <option value="mSv/hr">mSv/hr</option>
+                                <option value="Sv/hr">Sv/hr</option>
+                                <option value="mR/hr">mR/hr</option>
+                                <option value="R/hr">R/hr</option>
+                                <option value="uGy/hr">µGy/hr</option>
+                                <option value="mGy/hr">mGy/hr</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <canvas id="static-canvas" class="w-full bg-black rounded"></canvas>
+            </div>
+        </div>
+
+        <div id="calibrate-mode" class="mode-content hidden bg-slate-800 rounded-lg p-6">
+            <h2 class="text-2xl font-bold mb-4">Calibration</h2>
+            
+            <div id="current-calib" class="hidden bg-green-900/30 border border-green-500 p-4 rounded mb-4">
+                <p class="font-bold">Current Calibration</p>
+                <p id="current-calib-factor"></p>
+                <button id="clear-calib-btn" class="mt-2 bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm">Clear Calibration</button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block mb-2 font-bold">Select Isotope</label>
+                    <select id="isotope-select" class="w-full p-2 bg-slate-700 rounded text-white">
+                        <option value="F-18">Fluorine-18 (Γ=0.096, t½=109.8 min)</option>
+                        <option value="Tc-99m">Technetium-99m (Γ=0.022, t½=6.01 hrs)</option>
+                        <option value="I-131">Iodine-131 (Γ=0.056, t½=8.02 days)</option>
+                        <option value="Ga-67">Gallium-67 (Γ=0.028, t½=3.26 days)</option>
+                        <option value="Tl-201">Thallium-201 (Γ=0.012, t½=73.1 hrs)</option>
+                        <option value="In-111">Indium-111 (Γ=0.083, t½=2.80 days)</option>
+                        <option value="Lu-177">Lutetium-177 (Γ=0.014, t½=6.65 days)</option>
+                        <option value="Y-90">Yttrium-90 (Γ=0.000, t½=64.1 hrs)</option>
+                        <option value="custom">Custom Isotope</option>
+                    </select>
+                </div>
+
+                <div id="custom-gamma-div" class="hidden">
+                    <label class="block mb-2 font-bold">Gamma Constant (µSv·m²/MBq·hr)</label>
+                    <input type="number" step="0.001" id="custom-gamma" class="w-full p-2 bg-slate-700 rounded text-white" placeholder="Enter gamma constant">
+                </div>
+
+                <div>
+                    <label class="block mb-2 font-bold">Activity (MBq)</label>
+                    <input type="number" id="activity" class="w-full p-2 bg-slate-700 rounded text-white" placeholder="Enter source activity">
+                </div>
+
+                <div>
+                    <label class="block mb-2 font-bold">Distance (meters)</label>
+                    <input type="number" step="0.1" id="distance" class="w-full p-2 bg-slate-700 rounded text-white" placeholder="Enter distance from source">
+                </div>
+
+                <div>
+                    <label class="block mb-2 font-bold">Exposure Time (seconds)</label>
+                    <input type="number" step="0.1" id="exposure-time" class="w-full p-2 bg-slate-700 rounded text-white" placeholder="How long was the image exposed?" value="1">
+                    <p class="text-sm text-gray-400 mt-1">For real-time mode, use 1 second. For static images, enter your camera's exposure time.</p>
+                </div>
+
+                <button id="calibrate-btn" class="w-full bg-purple-600 hover:bg-purple-700 px-4 py-3 rounded font-bold">Calibrate</button>
+
+                <div class="bg-blue-900/30 border border-blue-500 p-4 rounded">
+                    <h3 class="font-bold mb-2">How to Calibrate:</h3>
+                    <ol class="list-decimal list-inside space-y-1 text-sm">
+                        <li>Place known radioactive source at measured distance</li>
+                        <li>Perform detection with static images OR real-time mode</li>
+                        <li>Note your camera's exposure time (default 1 second for real-time)</li>
+                        <li>Enter source activity, distance, exposure time, and isotope</li>
+                        <li>Click calibrate to calculate conversion factor</li>
+                    </ol>
+                    <p class="text-sm text-gray-400 mt-2"><strong>Important:</strong> Exposure time is critical! The calibration normalizes your counts to counts per second (CPS) for accurate dose rate calculation.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="info-mode" class="mode-content hidden bg-slate-800 rounded-lg p-6">
+            <h2 class="text-2xl font-bold mb-4">About This Application</h2>
+            
+            <div class="space-y-6">
+                <section>
+                    <h3 class="text-xl font-bold mb-3 text-purple-400">How It Works</h3>
+                    
+                    <div class="space-y-3">
+                        <div>
+                            <h4 class="font-bold text-lg mb-2">The Science Behind Camera Detection</h4>
+                            <p class="mb-2">When ionizing radiation (gamma rays, X-rays, beta particles) passes through a camera sensor (CMOS or CCD), it deposits energy directly into the silicon photodiodes. This creates electron-hole pairs that the camera registers as bright pixels - appearing as small "stars" or bright spots in the image.</p>
+                            <p>This is the same phenomenon used in professional radiation detection systems, but we're using your smartphone camera as the detector!</p>
+                        </div>
+
+                        <div>
+                            <h4 class="font-bold text-lg mb-2">Step-by-Step Process</h4>
+                            <ol class="list-decimal list-inside space-y-2 ml-4">
+                                <li><strong>Camera Preparation:</strong> Cover your camera lens completely with black tape or opaque cloth to block all ambient light. This ensures that only radiation events create bright pixels.</li>
+                                
+                                <li><strong>Background Capture:</strong> Take an image or video with NO radiation present. This establishes your baseline noise level from the camera's electronics. The app averages multiple frames to reduce random noise.</li>
+                                
+                                <li><strong>Detection Image:</strong> Place your camera near a radiation source (while following safety protocols). The radiation creates additional bright spots beyond the baseline noise.</li>
+                                
+                                <li><strong>Subtraction Process:</strong> The app subtracts the background image from the detection image, pixel by pixel. This removes camera noise and leaves only the radiation-induced bright pixels.</li>
+                                
+                                <li><strong>Threshold Filtering:</strong> Each pixel difference is compared to your threshold setting. Only pixels brighter than the threshold are counted, filtering out remaining noise.</li>
+                                
+                                <li><strong>Event Counting:</strong> Bright pixels are grouped into clusters (since one radiation particle typically affects multiple adjacent pixels). Each cluster represents one radiation event.</li>
+                                
+                                <li><strong>Dose Estimation:</strong> If calibrated, the count rate is converted to dose rate (µSv/hr) using your calibration factor.</li>
+                            </ol>
+                        </div>
+
+                        <div>
+                            <h4 class="font-bold text-lg mb-2">Understanding the Detection Threshold</h4>
+                            <p class="mb-2">The threshold is the most important parameter to adjust. It determines how bright a pixel must be (compared to background) to count as a radiation event.</p>
+                            <ul class="list-disc list-inside space-y-1 ml-4">
+                                <li><strong>Too Low (10-30):</strong> Counts camera noise as radiation → many false positives</li>
+                                <li><strong>Optimal (40-70):</strong> Filters noise while capturing real events → accurate detection</li>
+                                <li><strong>Too High (100+):</strong> Misses real radiation events → undercounting</li>
+                            </ul>
+                            <p class="mt-2">Adjust the threshold while watching the detection image until you see only the clear bright spots from radiation, not random noise specks.</p>
+                        </div>
+
+                        <div>
+                            <h4 class="font-bold text-lg mb-2">Background Subtraction Methods</h4>
+                            <ul class="list-disc list-inside space-y-2 ml-4">
+                                <li><strong>Pixel-wise:</strong> I(x,y) - B(x,y) > T. Removes spatial sensor noise patterns and fixed hot pixels. Computationally intensive but most accurate for structured noise.</li>
+                                
+                                <li><strong>Mean:</strong> [I(x,y) - μ<sub>I</sub>] - [B(x,y) - μ<sub>B</sub>] > T, where μ is image mean. Fast uniform baseline correction. Optimal for homogeneous sensor response.</li>
+                                
+                                <li><strong>Hybrid:</strong> I(x,y) - max(B(x,y), μ<sub>B</sub>) > T. Combines spatial and statistical approaches. Balanced performance for most applications.</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h4 class="font-bold text-lg mb-2">Background Count Correction</h4>
+                            <p>Dark current, thermal noise, and cosmic rays create false events in background. Net signal: S<sub>net</sub> = S<sub>detection</sub> - S<sub>background</sub>. Critical when SNR < 3:1.</p>
+                        </div>
+
+                        <div>
+                            <h4 class="font-bold text-lg mb-2">Exposure Time Optimization</h4>
+                            <p>Detection sensitivity scales with √t. For low flux Φ, longer integration improves SNR: SNR = (Φ·t·η) / √(Φ·t·η + σ<sub>dark</sub>²·t), where η is quantum efficiency. Range: 1-30s for typical smartphone CMOS (η ≈ 0.3-0.5 for visible equivalent).</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h3 class="text-xl font-bold mb-3 text-purple-400">Radiation Units Explained</h3>
+                    <p class="mb-3">The app supports automatic conversion between multiple radiation units:</p>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div>
+                            <h4 class="font-bold mb-2">Dose Rate Units:</h4>
+                            <ul class="space-y-2 text-sm">
+                                <li><strong>µSv/hr (Microsievert per hour):</strong> Standard SI unit for biological dose rate. 1 µSv/hr = 0.001 mSv/hr</li>
+                                <li><strong>mSv/hr (Millisievert per hour):</strong> 1 mSv/hr = 1,000 µSv/hr. Used for higher dose rates.</li>
+                                <li><strong>Sv/hr (Sievert per hour):</strong> 1 Sv/hr = 1,000,000 µSv/hr. Used only for very high dose rates.</li>
+                                <li><strong>mR/hr (Milliroentgen per hour):</strong> Traditional exposure unit. 1 µSv/hr ≈ 0.1 mR/hr</li>
+                                <li><strong>R/hr (Roentgen per hour):</strong> 1 R/hr = 1,000 mR/hr ≈ 10,000 µSv/hr</li>
+                                <li><strong>µGy/hr (Microgray per hour):</strong> Absorbed dose unit. For tissue, 1 Gy ≈ 1 Sv</li>
+                                <li><strong>mGy/hr (Milligray per hour):</strong> 1 mGy/hr = 1,000 µGy/hr</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 class="font-bold mb-2">Count Rate Units:</h4>
+                            <ul class="space-y-2 text-sm">
+                                <li><strong>CPS (Counts Per Second):</strong> Raw detection rate</li>
+                                <li><strong>CPM (Counts Per Minute):</strong> CPS × 60, standard for radiation counting</li>
+                                <li><strong>Events:</strong> Number of radiation interactions detected (after clustering bright pixels)</li>
+                                <li><strong>Net Events:</strong> Events minus background - the corrected count</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <p class="mt-3 text-sm bg-slate-900 p-3 rounded"><strong>Reference levels:</strong> Natural background: 0.05-0.2 µSv/hr | Chest X-ray: ~20 µSv total | Flight at altitude: ~3-5 µSv/hr | CT scan: ~10,000 µSv total | Annual limit for public: 1,000 µSv/year</p>
+                </section>
+
+                <section>
+                    <h3 class="text-xl font-bold mb-3 text-purple-400">Calibration Process</h3>
+                    <p class="mb-2">Calibration converts raw counts to actual dose rates. Here's how:</p>
+                    <ol class="list-decimal list-inside space-y-2 ml-4">
+                        <li>Place known source (activity A in MBq) at distance r (meters)</li>
+                        <li>Measure count rate C (events/second) with exposure time t</li>
+                        <li>Calculate theoretical dose: Ḣ = (Γ·A) / r², where Γ is isotope-specific gamma constant (µSv·m²/MBq·hr)</li>
+                        <li>Normalize: C<sub>norm</sub> = C<sub>total</sub> / t</li>
+                        <li>Calibration factor: k = Ḣ / C<sub>norm</sub> (µSv/hr per count/s)</li>
+                        <li>Applied as: Dose rate = k · C<sub>measured</sub></li>
+                    </ol>
+                    <p class="mt-3 text-sm text-yellow-400"><strong>Note:</strong> Accurate exposure time entry is critical. Error in t directly propagates to k. Systematic uncertainty typically 20-50% due to sensor angular response, energy dependence, and geometry factors.</p>
+                </section>
+
+                <section>
+                    <h3 class="text-xl font-bold mb-3 text-purple-400">Types of Radiation Detected</h3>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li><strong>Gamma rays (10 keV - 10 MeV):</strong> Primary detection mode. Interaction via Compton scattering in silicon.</li>
+                        <li><strong>X-rays (1-100 keV):</strong> Photoelectric absorption dominant at lower energies.</li>
+                        <li><strong>Beta particles (E > 100 keV):</strong> If incident on sensor. Most blocked by lens assembly.</li>
+                        <li><strong>Muons (cosmic rays):</strong> ~1 event/cm²/min at sea level. Minimum ionizing particles.</li>
+                    </ul>
+                    <p class="mt-2 text-sm text-gray-400">Alpha particles (range ~40 µm in Si) stopped by protective glass. Typical CMOS sensor: 5-10 µm depletion depth, 3-5 e⁻/hole pair per keV deposited.</p>
+                </section>
+
+                <section>
+                    <h3 class="text-xl font-bold mb-3 text-purple-400">Limitations & Accuracy</h3>
+                    <ul class="list-disc list-inside space-y-2 ml-4">
+                        <li><strong>Energy response:</strong> Non-linear. Peak efficiency 50-200 keV (typical CMOS). Decreases ~1/E for higher energies.</li>
+                        <li><strong>Angular dependence:</strong> Cosine response due to sensor geometry. ±30° variation typical.</li>
+                        <li><strong>Temperature drift:</strong> Dark current doubles per ~7°C. Background subtraction partially compensates.</li>
+                        <li><strong>Quantum efficiency:</strong> η ≈ 30-50% visible equivalent. Lower for gamma (indirect interaction).</li>
+                        <li><strong>Minimum detectable activity (MDA):</strong> ~1-10 µSv/hr typical. Sensor-dependent.</li>
+                        <li><strong>Linearity:</strong> Good up to ~100 µSv/hr. Saturation and pile-up above.</li>
+                    </ul>
+                    <p class="mt-2 text-sm">Not certified for regulatory dosimetry. Use as qualitative indicator or for education. Systematic uncertainty: 20-50% after calibration.</p>
+                </section>
+
+                <section>
+                    <h3 class="text-xl font-bold mb-3 text-red-400">Safety Warning</h3>
+                    <div class="bg-red-900/30 border border-red-500 p-4 rounded">
+                        <p class="font-bold mb-2">⚠️ IMPORTANT SAFETY INFORMATION</p>
+                        <ul class="list-disc list-inside space-y-1 text-sm">
+                            <li>This tool is for <strong>educational and research purposes only</strong></li>
+                            <li>Always follow proper radiation safety protocols and ALARA principles (As Low As Reasonably Achievable)</li>
+                            <li>Use certified, calibrated instruments for regulatory compliance and dose monitoring</li>
+                            <li>Never handle radioactive sources without proper training and authorization</li>
+                            <li>Consult radiation safety officers for workplace applications</li>
+                            <li>This app does not provide legally valid measurements for regulatory purposes</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3 class="text-xl font-bold mb-3 text-purple-400">Tips for Best Results</h3>
+                    <ul class="list-disc list-inside space-y-2 ml-4">
+                        <li><strong>Light Blocking:</strong> Use completely opaque black electrical tape or multiple layers of cloth. Even tiny light leaks will ruin detection.</li>
+                        <li><strong>Camera Cooling:</strong> Let your phone cool down if it's warm. Heat increases sensor noise.</li>
+                        <li><strong>Stable Positioning:</strong> Keep the camera perfectly still during measurements.</li>
+                        <li><strong>Same Location:</strong> Capture background and detection images in the exact same position.</li>
+                        <li><strong>Threshold Tuning:</strong> Start at 50 and adjust while watching the processed image - you should see clear spots, not random noise.</li>
+                        <li><strong>Longer Exposure:</strong> In static mode, use longer camera exposure times (if your camera app supports it) for better sensitivity.</li>
+                        <li><strong>Multiple Measurements:</strong> Take several measurements and average them for better accuracy.</li>
+                        <li><strong>Source Distance:</strong> For calibration, measure distance from source center to camera sensor (middle of phone).</li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h3 class="text-xl font-bold mb-3 text-purple-400">Applications</h3>
+                    <ul class="list-disc list-inside space-y-1 ml-4">
+                        <li>Nuclear medicine - monitoring dose rates from radiopharmaceuticals</li>
+                        <li>Educational demonstrations of radiation detection</li>
+                        <li>Research and development of low-cost detection methods</li>
+                        <li>Quick qualitative checks for radiation presence</li>
+                        <li>Cosmic ray detection experiments</li>
+                        <li>Science fair projects and STEM education</li>
+                    </ul>
+                </section>
+            </div>
+        </div>
+
+        <canvas id="work-canvas" class="hidden"></canvas>
+        
+        <footer class="text-center mt-8 pt-4 border-t border-slate-700">
+            <p class="text-gray-400">Made by <a href="https://www.linkedin.com/in/poovendhan-mathiyazhagan/" target="_blank" rel="noopener noreferrer" class="text-purple-400 hover:text-purple-300">Poovendhan Mathiyazhagan</a></p>
+        </footer>
+    </div>
+
+    <script>
+        const ISOTOPES = {
+            'F-18': 0.096, 'Tc-99m': 0.022, 'I-131': 0.056, 'Ga-67': 0.028,
+            'Tl-201': 0.012, 'In-111': 0.083, 'Lu-177': 0.014, 'Y-90': 0.000
+        };
+
+        let calibrationFactor = null;
+        let staticBgImage = null;
+        let currentCounts = 0;
+        let lastProcessedImage = null; // Store last image for reprocessing
+        let stream = null;
+        let rtBackgroundImage = null;
+        let rtBackgroundMean = 0;
+        let rtBackgroundCounts = 0;
+        let detectionInterval = null;
+        let frameCount = 0;
+        let frameBuffer = [];
+
+        // Load calibration from storage
+        const saved = localStorage.getItem('radiationCalibration');
+        if (saved) {
+            calibrationFactor = parseFloat(saved);
+            updateCalibrationUI();
+        }
+
+        // Check if page is loaded over HTTP (not HTTPS) and warn
+        if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            const warning = document.createElement('div');
+            warning.className = 'fixed top-0 left-0 right-0 bg-red-600 text-white p-3 text-center z-50';
+            warning.innerHTML = '<strong>⚠️ WARNING:</strong> Camera access requires HTTPS. Real-time mode will not work on this page. Please use HTTPS or localhost.';
+            document.body.prepend(warning);
+        }
+
+        // Check if opened as file:// protocol
+        if (window.location.protocol === 'file:') {
+            const warning = document.createElement('div');
+            warning.className = 'fixed top-0 left-0 right-0 bg-red-600 text-white p-3 text-center z-50 text-sm';
+            warning.innerHTML = '<strong>⚠️ MOBILE CAMERA WON\'T WORK:</strong> File opened directly from device. Upload to GitHub Pages or web hosting for camera access. Static Images mode still works!';
+            document.body.prepend(warning);
+        }
+
+        // Test camera button
+        document.getElementById('test-camera-btn').addEventListener('click', async () => {
+            let diagnostics = '🔍 CAMERA DIAGNOSTICS:\n\n';
+            
+            diagnostics += '📍 Current URL: ' + window.location.href + '\n';
+            diagnostics += '🔒 Protocol: ' + window.location.protocol + '\n';
+            diagnostics += '🌐 Hostname: ' + window.location.hostname + '\n\n';
+            
+            // Check if mediaDevices is available
+            if (!navigator.mediaDevices) {
+                diagnostics += '❌ navigator.mediaDevices NOT available\n';
+                diagnostics += '→ Likely cause: Not HTTPS or file:// protocol\n\n';
+                diagnostics += 'SOLUTION: Upload to GitHub Pages or web server with HTTPS';
+                alert(diagnostics);
+                return;
+            }
+            
+            diagnostics += '✓ navigator.mediaDevices available\n\n';
+            
+            // Try to enumerate devices
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const cameras = devices.filter(d => d.kind === 'videoinput');
+                diagnostics += '📷 Cameras found: ' + cameras.length + '\n';
+                cameras.forEach((cam, i) => {
+                    diagnostics += '  ' + (i+1) + '. ' + (cam.label || 'Camera ' + (i+1)) + '\n';
+                });
+                diagnostics += '\n';
+            } catch (e) {
+                diagnostics += '⚠️ Could not enumerate devices: ' + e.message + '\n\n';
+            }
+            
+            // Try to access camera
+            diagnostics += 'Attempting camera access...\n';
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                diagnostics += '✅ SUCCESS! Camera access granted.\n\n';
+                diagnostics += 'Camera is working. Try "Start Camera" button.';
+                stream.getTracks().forEach(track => track.stop());
+            } catch (e) {
+                diagnostics += '❌ FAILED: ' + e.name + '\n';
+                diagnostics += 'Message: ' + e.message + '\n\n';
+                
+                if (e.name === 'NotAllowedError') {
+                    diagnostics += 'CAUSE: Permission denied by user or browser\n\n';
+                    diagnostics += 'FIX:\n';
+                    diagnostics += '• Refresh page and click "Allow" when asked\n';
+                    diagnostics += '• Check browser settings:\n';
+                    diagnostics += '  iPhone: Settings → Safari → Camera\n';
+                    diagnostics += '  Android: Settings → Apps → Browser → Permissions\n';
+                } else if (e.name === 'NotFoundError') {
+                    diagnostics += 'CAUSE: No camera detected\n';
+                } else if (e.name === 'NotReadableError') {
+                    diagnostics += 'CAUSE: Camera in use by another app\n';
+                    diagnostics += 'FIX: Close other camera apps\n';
+                } else if (e.name === 'SecurityError') {
+                    diagnostics += 'CAUSE: HTTPS required for camera access\n';
+                    diagnostics += 'FIX: Upload to GitHub Pages or HTTPS server\n';
+                }
+            }
+            
+            alert(diagnostics);
+        });
+
+        // Progress bar functions
+        function showProgress() {
+            document.getElementById('progress-section').classList.remove('hidden');
+        }
+
+        function hideProgress() {
+            document.getElementById('progress-section').classList.add('hidden');
+        }
+
+        function updateProgress(percent, message) {
+            document.getElementById('progress-bar').style.width = percent + '%';
+            document.getElementById('progress-percent').textContent = Math.round(percent) + '%';
+            document.getElementById('progress-text').textContent = message;
+        }
+
+        // Mode switching
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const mode = this.dataset.mode;
+                document.querySelectorAll('.mode-content').forEach(el => el.classList.add('hidden'));
+                document.getElementById(mode + '-mode').classList.remove('hidden');
+                
+                document.querySelectorAll('.mode-btn').forEach(b => {
+                    b.classList.remove('bg-purple-600');
+                    b.classList.add('bg-slate-700');
+                });
+                this.classList.add('bg-purple-600');
+                this.classList.remove('bg-slate-700');
+            });
+        });
+
+        // Threshold sliders
+        document.getElementById('threshold').addEventListener('input', (e) => {
+            document.getElementById('threshold-val').textContent = e.target.value;
+            // Auto-reprocess if we have a processed image
+            if (lastProcessedImage) {
+                processImage(lastProcessedImage);
+            }
+        });
+
+        // Background method change triggers reprocessing
+        document.getElementById('bg-method-static').addEventListener('change', () => {
+            if (lastProcessedImage) {
+                processImage(lastProcessedImage);
+            }
+        });
+
+        // Unit selector change updates display
+        document.getElementById('unit-selector-static').addEventListener('change', updateStaticDisplay);
+
+        document.getElementById('threshold-rt').addEventListener('input', (e) => {
+            document.getElementById('threshold-rt-val').textContent = e.target.value;
+        });
+
+        document.getElementById('bg-frames').addEventListener('input', (e) => {
+            document.getElementById('bg-frames-val').textContent = e.target.value;
+        });
+
+        document.getElementById('detect-exposure').addEventListener('input', (e) => {
+            document.getElementById('detect-exposure-val').textContent = e.target.value;
+            // Restart detection with new exposure time if currently detecting
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                frameBuffer = [];
+                const exposureTime = parseInt(e.target.value);
+                detectionInterval = setInterval(() => {
+                    processRealtimeFrame();
+                }, exposureTime * 1000);
+            }
+        });
+
+        // Threshold and method changes trigger reprocessing
+        document.getElementById('threshold-rt').addEventListener('input', (e) => {
+            document.getElementById('threshold-rt-val').textContent = e.target.value;
+            // If detection is running, the next frame will use new threshold automatically
+        });
+
+        document.getElementById('bg-method-rt').addEventListener('change', () => {
+            // Method change applies on next frame automatically
+        });
+
+        // Unit conversion function
+        function convertDose(valueInMicroSvHr, toUnit) {
+            switch(toUnit) {
+                case 'uSv/hr': return valueInMicroSvHr.toFixed(3);
+                case 'mSv/hr': return (valueInMicroSvHr / 1000).toFixed(6);
+                case 'Sv/hr': return (valueInMicroSvHr / 1000000).toFixed(9);
+                case 'mR/hr': return (valueInMicroSvHr * 0.1).toFixed(3);
+                case 'R/hr': return (valueInMicroSvHr * 0.0001).toFixed(6);
+                case 'uGy/hr': return valueInMicroSvHr.toFixed(3); // Assuming tissue, 1 Gy ≈ 1 Sv
+                case 'mGy/hr': return (valueInMicroSvHr / 1000).toFixed(6);
+                default: return valueInMicroSvHr.toFixed(3);
+            }
+        }
+
+        // Unit selector listeners
+        document.getElementById('unit-selector-rt').addEventListener('change', updateRTDisplay);
+        document.getElementById('unit-selector-static').addEventListener('change', updateStaticDisplay);
+
+        function updateRTDisplay() {
+            // This will be called by processRealtimeFrame
+        }
+
+        function updateStaticDisplay() {
+            if (calibrationFactor && currentCounts > 0) {
+                const unit = document.getElementById('unit-selector-static').value;
+                const doseInMicroSv = currentCounts * calibrationFactor;
+                document.getElementById('static-dose-val').textContent = convertDose(doseInMicroSv, unit) + ' ' + unit;
+            }
+        }
+
+        // Isotope selection
+        document.getElementById('isotope-select').addEventListener('change', (e) => {
+            document.getElementById('custom-gamma-div').classList.toggle('hidden', e.target.value !== 'custom');
+        });
+
+        // Image loading
+        document.getElementById('bg-upload').addEventListener('change', (e) => loadImage(e, true));
+        document.getElementById('detect-upload').addEventListener('change', (e) => loadImage(e, false));
+
+        function loadImage(e, isBg) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.getElementById('work-canvas');
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    
+                    if (isBg) {
+                        staticBgImage = data;
+                        alert('Background loaded! Resolution: ' + img.width + 'x' + img.height);
+                    } else {
+                        if (!staticBgImage) return alert('Load background first!');
+                        lastProcessedImage = data; // Store for reprocessing
+                        processImage(data);
+                    }
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function processImage(current) {
+            showProgress();
+            updateProgress(10, 'Starting analysis...');
+            
+            try {
+                const method = document.getElementById('bg-method-static').value;
+                
+                // Resize background if needed
+                if (staticBgImage.width !== current.width || staticBgImage.height !== current.height) {
+                    updateProgress(20, 'Matching dimensions...');
+                    const tempCanvas = document.createElement('canvas');
+                    const tempCtx = tempCanvas.getContext('2d');
+                    tempCanvas.width = current.width;
+                    tempCanvas.height = current.height;
+                    tempCtx.putImageData(staticBgImage, 0, 0);
+                    staticBgImage = tempCtx.getImageData(0, 0, current.width, current.height);
+                }
+                
+                // Calculate background mean if using mean or hybrid method
+                let bgMean = 0;
+                if (method === 'mean' || method === 'hybrid') {
+                    updateProgress(25, 'Calculating background mean...');
+                    let sum = 0;
+                    for (let i = 0; i < staticBgImage.data.length; i += 4) {
+                        sum += (staticBgImage.data[i] + staticBgImage.data[i+1] + staticBgImage.data[i+2]) / 3;
+                    }
+                    bgMean = sum / (staticBgImage.data.length / 4);
+                }
+                
+                // Count background events
+                updateProgress(30, 'Analyzing background...');
+                const threshold = parseInt(document.getElementById('threshold').value);
+                let bgEvents = 0;
+                
+                for (let i = 0; i < staticBgImage.data.length; i += 4) {
+                    const bgBright = (staticBgImage.data[i] + staticBgImage.data[i+1] + staticBgImage.data[i+2]) / 3;
+                    if (method === 'pixelwise' && bgBright > threshold) {
+                        bgEvents++;
+                    } else if (method === 'mean' && bgBright - bgMean > threshold) {
+                        bgEvents++;
+                    } else if (method === 'hybrid' && bgBright > bgMean + threshold) {
+                        bgEvents++;
+                    }
+                }
+                bgEvents = Math.round(bgEvents / 25); // Estimate clusters
+                
+                const canvas = document.getElementById('static-canvas');
+                const ctx = canvas.getContext('2d');
+                
+                canvas.width = current.width;
+                canvas.height = current.height;
+                
+                const diff = new ImageData(canvas.width, canvas.height);
+                let brightPixels = 0;
+                const totalPixels = current.data.length / 4;
+                
+                updateProgress(40, 'Analyzing detection image...');
+                
+                // Process in chunks
+                const chunkSize = 100000;
+                for (let start = 0; start < current.data.length; start += chunkSize * 4) {
+                    const end = Math.min(start + chunkSize * 4, current.data.length);
+                    const progress = 40 + ((start / current.data.length) * 50);
+                    
+                    for (let i = start; i < end; i += 4) {
+                        const cur = (current.data[i] + current.data[i+1] + current.data[i+2]) / 3;
+                        const bg = (staticBgImage.data[i] + staticBgImage.data[i+1] + staticBgImage.data[i+2]) / 3;
+                        
+                        let difference;
+                        if (method === 'pixelwise') {
+                            difference = cur - bg;
+                        } else if (method === 'mean') {
+                            difference = (cur - bgMean) - (bg - bgMean);
+                        } else { // hybrid
+                            difference = cur - Math.max(bg, bgMean);
+                        }
+                        
+                        if (difference > threshold) {
+                            diff.data[i] = diff.data[i+1] = diff.data[i+2] = 255;
+                            diff.data[i+3] = 255;
+                            brightPixels++;
+                        } else {
+                            diff.data[i] = diff.data[i+1] = diff.data[i+2] = 0;
+                            diff.data[i+3] = 255;
+                        }
+                    }
+                    
+                    if (start % (chunkSize * 10) === 0) {
+                        updateProgress(progress, `Processed ${(start/4).toLocaleString()} / ${totalPixels.toLocaleString()} pixels`);
+                        await new Promise(r => setTimeout(r, 10));
+                    }
+                }
+                
+                updateProgress(95, 'Finalizing...');
+                ctx.putImageData(diff, 0, 0);
+                
+                const events = Math.round(brightPixels / 25);
+                const netEvents = Math.max(0, events - bgEvents);
+                currentCounts = netEvents;
+                
+                document.getElementById('static-counts').textContent = events + ' (' + brightPixels.toLocaleString() + ' pixels)';
+                document.getElementById('static-bg-counts').textContent = bgEvents;
+                document.getElementById('static-net-counts').textContent = netEvents;
+                
+                if (calibrationFactor) {
+                    const unit = document.getElementById('unit-selector-static').value;
+                    const doseInMicroSv = netEvents * calibrationFactor;
+                    document.getElementById('static-dose-val').textContent = convertDose(doseInMicroSv, unit) + ' ' + unit;
+                    document.getElementById('static-dose').classList.remove('hidden');
+                }
+                
+                updateProgress(100, 'Complete!');
+                await new Promise(r => setTimeout(r, 500));
+                hideProgress();
+                
+            } catch (error) {
+                hideProgress();
+                alert('Error: ' + error.message);
+            }
+        }
+
+        // Calibration
+        document.getElementById('calibrate-btn').addEventListener('click', () => {
+            const activity = parseFloat(document.getElementById('activity').value);
+            const distance = parseFloat(document.getElementById('distance').value);
+            const exposureTime = parseFloat(document.getElementById('exposure-time').value);
+            const isotope = document.getElementById('isotope-select').value;
+            
+            if (!activity || !distance || !exposureTime) {
+                return alert('Please enter activity, distance, and exposure time');
+            }
+            
+            let gamma = isotope === 'custom' 
+                ? parseFloat(document.getElementById('custom-gamma').value)
+                : ISOTOPES[isotope];
+            
+            if (!gamma && gamma !== 0) return alert('Enter gamma constant');
+            
+            // Calculate theoretical dose rate (µSv/hr)
+            const theorDoseRate = (gamma * activity) / (distance * distance);
+            
+            if (currentCounts === 0) {
+                return alert('No counts detected. Please perform a measurement first.');
+            }
+            
+            // Normalize counts to counts per second (CPS)
+            const countsPerSecond = currentCounts / exposureTime;
+            
+            // Convert dose rate from µSv/hr to µSv/s for matching units
+            const theorDoseRatePerSecond = theorDoseRate / 3600;
+            
+            // Calculate calibration factor: µSv/s per count/s = µSv per count
+            calibrationFactor = theorDoseRatePerSecond / countsPerSecond;
+            
+            // Store as µSv/hr per count (multiply by 3600)
+            const calibFactorPerHour = calibrationFactor * 3600;
+            
+            localStorage.setItem('radiationCalibration', calibFactorPerHour);
+            calibrationFactor = calibFactorPerHour;
+            
+            updateCalibrationUI();
+            
+            alert(`Calibration complete!
+            
+Measured: ${currentCounts} counts in ${exposureTime}s = ${countsPerSecond.toFixed(2)} CPS
+Theoretical dose rate: ${theorDoseRate.toFixed(3)} µSv/hr
+Calibration factor: ${calibFactorPerHour.toFixed(6)} µSv/hr per count`);
+        });
+
+        document.getElementById('clear-calib-btn').addEventListener('click', () => {
+            calibrationFactor = null;
+            localStorage.removeItem('radiationCalibration');
+            updateCalibrationUI();
+            alert('Calibration cleared');
+        });
+
+        function updateCalibrationUI() {
+            if (calibrationFactor) {
+                document.getElementById('calibration-status').classList.remove('hidden');
+                document.getElementById('calib-factor').textContent = `Factor: ${calibrationFactor.toFixed(6)} µSv/hr per count`;
+                document.getElementById('current-calib').classList.remove('hidden');
+                document.getElementById('current-calib-factor').textContent = `Factor: ${calibrationFactor.toFixed(6)} µSv/hr per count`;
+            } else {
+                document.getElementById('calibration-status').classList.add('hidden');
+                document.getElementById('current-calib').classList.add('hidden');
+            }
+        }
+
+        // Real-time mode functions
+        document.getElementById('start-camera-btn').addEventListener('click', async () => {
+            try {
+                // Try multiple constraint options for better compatibility
+                let stream = null;
+                
+                // First try with environment camera
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { 
+                            facingMode: 'environment',
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        } 
+                    });
+                } catch (e1) {
+                    console.log('Environment camera failed, trying user camera:', e1);
+                    // If that fails, try front camera
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia({ 
+                            video: { 
+                                facingMode: 'user',
+                                width: { ideal: 1280 },
+                                height: { ideal: 720 }
+                            } 
+                        });
+                    } catch (e2) {
+                        console.log('User camera failed, trying simple request:', e2);
+                        // If that fails, try simplest possible request
+                        stream = await navigator.mediaDevices.getUserMedia({ 
+                            video: true 
+                        });
+                    }
+                }
+                
+                if (stream) {
+                    document.getElementById('video').srcObject = stream;
+                    document.getElementById('start-camera-btn').classList.add('hidden');
+                    document.getElementById('stop-camera-btn').classList.remove('hidden');
+                    document.getElementById('capture-bg-btn').classList.remove('hidden');
+                }
+            } catch (err) {
+                console.error('Camera error:', err);
+                let errorMsg = 'Camera access denied or not available.\n\n';
+                
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    errorMsg += 'SOLUTION:\n';
+                    errorMsg += '1. Check browser permissions for this site\n';
+                    errorMsg += '2. On mobile: Settings → Safari/Chrome → Camera → Allow\n';
+                    errorMsg += '3. Try refreshing the page\n';
+                    errorMsg += '4. Make sure you\'re using HTTPS (not HTTP)\n\n';
+                    errorMsg += 'For iPhone: Settings → Safari → Camera → Allow\n';
+                    errorMsg += 'For Android: Settings → Apps → Browser → Permissions → Camera → Allow';
+                } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                    errorMsg += 'No camera found on this device.';
+                } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                    errorMsg += 'Camera is already in use by another app.\nClose other camera apps and try again.';
+                } else if (err.name === 'OverconstrainedError') {
+                    errorMsg += 'Camera constraints not supported.\nYour camera may not support the requested resolution.';
+                } else if (err.name === 'SecurityError') {
+                    errorMsg += 'HTTPS required for camera access.\n\n';
+                    errorMsg += 'This page must be served over HTTPS (secure connection).\n';
+                    errorMsg += 'If testing locally, use "localhost" in the URL.';
+                } else {
+                    errorMsg += 'Error: ' + err.name + '\n' + err.message;
+                }
+                
+                alert(errorMsg);
+            }
+        });
+
+        document.getElementById('stop-camera-btn').addEventListener('click', () => {
+            if (stream) stream.getTracks().forEach(track => track.stop());
+            if (detectionInterval) clearInterval(detectionInterval);
+            document.getElementById('start-camera-btn').classList.remove('hidden');
+            document.getElementById('stop-camera-btn').classList.add('hidden');
+            document.getElementById('capture-bg-btn').classList.add('hidden');
+            document.getElementById('start-detect-btn').classList.add('hidden');
+            document.getElementById('stop-detect-btn').classList.add('hidden');
+        });
+
+        document.getElementById('capture-bg-btn').addEventListener('click', async () => {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('work-canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const numFrames = parseInt(document.getElementById('bg-frames').value);
+            const frames = [];
+
+            alert(`Capturing ${numFrames} frames for background... Please wait.`);
+
+            for (let i = 0; i < numFrames; i++) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0);
+                frames.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+                await new Promise(r => setTimeout(r, 100));
+            }
+
+            // Average frames
+            const avgData = new ImageData(frames[0].width, frames[0].height);
+            let totalSum = 0;
+            for (let i = 0; i < avgData.data.length; i += 4) {
+                let r = 0, g = 0, b = 0;
+                frames.forEach(f => { r += f.data[i]; g += f.data[i+1]; b += f.data[i+2]; });
+                avgData.data[i] = r / frames.length;
+                avgData.data[i+1] = g / frames.length;
+                avgData.data[i+2] = b / frames.length;
+                avgData.data[i+3] = 255;
+                
+                const brightness = (avgData.data[i] + avgData.data[i+1] + avgData.data[i+2]) / 3;
+                totalSum += brightness;
+            }
+
+            rtBackgroundImage = avgData;
+            rtBackgroundMean = totalSum / (avgData.data.length / 4);
+            
+            // Calculate background counts
+            const threshold = parseInt(document.getElementById('threshold-rt').value);
+            let bgBrightPixels = 0;
+            for (let i = 0; i < avgData.data.length; i += 4) {
+                const brightness = (avgData.data[i] + avgData.data[i+1] + avgData.data[i+2]) / 3;
+                if (brightness > threshold) {
+                    bgBrightPixels++;
+                }
+            }
+            rtBackgroundCounts = Math.round(bgBrightPixels / 25);
+            
+            alert(`Background captured successfully!
+${numFrames} frames averaged
+Mean brightness: ${rtBackgroundMean.toFixed(1)}
+Background counts: ${rtBackgroundCounts}`);
+            document.getElementById('start-detect-btn').classList.remove('hidden');
+        });
+
+        document.getElementById('start-detect-btn').addEventListener('click', () => {
+            if (!rtBackgroundImage) return alert('Capture background first!');
+            frameCount = 0;
+            frameBuffer = [];
+            document.getElementById('start-detect-btn').classList.add('hidden');
+            document.getElementById('stop-detect-btn').classList.remove('hidden');
+            
+            const exposureTime = parseInt(document.getElementById('detect-exposure').value);
+            
+            detectionInterval = setInterval(() => {
+                processRealtimeFrame();
+            }, exposureTime * 1000);
+        });
+
+        document.getElementById('stop-detect-btn').addEventListener('click', () => {
+            if (detectionInterval) clearInterval(detectionInterval);
+            document.getElementById('start-detect-btn').classList.remove('hidden');
+            document.getElementById('stop-detect-btn').classList.add('hidden');
+        });
+
+        async function processRealtimeFrame() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('work-canvas');
+            const rtCanvas = document.getElementById('rt-canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const rtCtx = rtCanvas.getContext('2d');
+            const threshold = parseInt(document.getElementById('threshold-rt').value);
+            const method = document.getElementById('bg-method-rt').value;
+            const exposureTime = parseInt(document.getElementById('detect-exposure').value);
+
+            // Capture frames for the exposure duration
+            frameBuffer = [];
+            const framesNeeded = exposureTime; // 1 frame per second
+            
+            for (let i = 0; i < framesNeeded; i++) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0);
+                frameBuffer.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+                if (i < framesNeeded - 1) {
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+            
+            // Average the frames
+            const avgCurrent = new ImageData(canvas.width, canvas.height);
+            for (let i = 0; i < avgCurrent.data.length; i += 4) {
+                let r = 0, g = 0, b = 0;
+                frameBuffer.forEach(f => { r += f.data[i]; g += f.data[i+1]; b += f.data[i+2]; });
+                avgCurrent.data[i] = r / frameBuffer.length;
+                avgCurrent.data[i+1] = g / frameBuffer.length;
+                avgCurrent.data[i+2] = b / frameBuffer.length;
+                avgCurrent.data[i+3] = 255;
+            }
+            
+            rtCanvas.width = canvas.width;
+            rtCanvas.height = canvas.height;
+
+            const diff = new ImageData(canvas.width, canvas.height);
+            let brightPixels = 0;
+
+            for (let i = 0; i < avgCurrent.data.length; i += 4) {
+                const cur = (avgCurrent.data[i] + avgCurrent.data[i+1] + avgCurrent.data[i+2]) / 3;
+                const bg = (rtBackgroundImage.data[i] + rtBackgroundImage.data[i+1] + rtBackgroundImage.data[i+2]) / 3;
+
+                let difference;
+                if (method === 'pixelwise') {
+                    difference = cur - bg;
+                } else if (method === 'mean') {
+                    difference = (cur - rtBackgroundMean) - (bg - rtBackgroundMean);
+                } else { // hybrid
+                    difference = cur - Math.max(bg, rtBackgroundMean);
+                }
+
+                if (difference > threshold) {
+                    diff.data[i] = diff.data[i+1] = diff.data[i+2] = 255;
+                    diff.data[i+3] = 255;
+                    brightPixels++;
+                } else {
+                    diff.data[i] = diff.data[i+1] = diff.data[i+2] = 0;
+                    diff.data[i+3] = 255;
+                }
+            }
+
+            rtCtx.putImageData(diff, 0, 0);
+            const events = Math.round(brightPixels / 25);
+            const netEvents = Math.max(0, events - rtBackgroundCounts);
+            
+            // Normalize to 1 second for calibration purposes
+            const eventsPerSecond = netEvents / exposureTime;
+            
+            document.getElementById('rt-counts').textContent = events;
+            document.getElementById('rt-bg-counts').textContent = rtBackgroundCounts;
+            document.getElementById('rt-net-counts').textContent = netEvents + ` (${eventsPerSecond.toFixed(1)} /s)`;
+
+            if (calibrationFactor) {
+                const unit = document.getElementById('unit-selector-rt').value;
+                const doseInMicroSv = eventsPerSecond * calibrationFactor;
+                document.getElementById('rt-dose').textContent = convertDose(doseInMicroSv, unit) + ' ' + unit;
+                document.getElementById('rt-dose-display').classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
